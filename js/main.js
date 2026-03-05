@@ -75,7 +75,7 @@ d3.csv("weather_trimmed.csv").then(data => {
         update(this.value);
     });
 
-    // Update function
+        // Update function
     function update(metric) {
 
         // Aggregate: average metric per state (skip nulls)
@@ -112,12 +112,11 @@ d3.csv("weather_trimmed.csv").then(data => {
         bars.enter()
             .append("rect")
             .attr("class", "bar")
-            .attr("x", d => x(d.state))
-            .attr("width", x.bandwidth())
             .attr("y", height)
             .attr("height", 0)
             .attr("fill", "#4a90d9")
             .attr("rx", 3)
+            .merge(bars)
             .on("mouseover", function (event, d) {
                 d3.select(this).attr("fill", "#2c5f8a");
                 tooltip
@@ -133,7 +132,6 @@ d3.csv("weather_trimmed.csv").then(data => {
                 d3.select(this).attr("fill", "#4a90d9");
                 tooltip.style("opacity", 0);
             })
-            .merge(bars)
             .transition().duration(500)
             .attr("x", d => x(d.state))
             .attr("width", x.bandwidth())
