@@ -3,6 +3,9 @@ const margin = { top: 60, right: 30, bottom: 80, left: 70 };
 const width  = 900 - margin.left - margin.right;
 const height = 500 - margin.top  - margin.bottom;
 
+const margin2 = { top: 40, right: 30, bottom: 60, left: 70 };
+const height2 = 300 - margin2.top - margin2.bottom;
+
 const metrics = {
     TMAX: "Avg Max Temperature (°F)",
     TMIN: "Avg Min Temperature (°F)",
@@ -11,12 +14,19 @@ const metrics = {
     SNOW: "Avg Snowfall (in)"
 };
 
-// SVG Setup
+// Bar chart SVG
 const svg = d3.select("#chart")
     .attr("width",  width  + margin.left + margin.right)
     .attr("height", height + margin.top  + margin.bottom)
     .append("g")
     .attr("transform", `translate(${margin.left},${margin.top})`);
+
+// Line chart SVG
+const svg2 = d3.select("#chart2")
+    .attr("width",  width  + margin2.left + margin2.right)
+    .attr("height", height2 + margin2.top  + margin2.bottom)
+    .append("g")
+    .attr("transform", `translate(${margin2.left},${margin2.top})`);
 
 // Tooltip
 const tooltip = d3.select("body")
@@ -31,7 +41,7 @@ const tooltip = d3.select("body")
     .style("font-size", "13px")
     .style("opacity", 0);
 
-// Axes & Labels (created once, updated on metric change)
+// Bar chart axes & labels
 const xAxisG = svg.append("g").attr("transform", `translate(0,${height})`);
 const yAxisG = svg.append("g");
 
@@ -51,11 +61,41 @@ svg.append("text")
     .attr("fill", "#555")
     .text("State");
 
+// Line chart axes & labels
+const xAxisG2 = svg2.append("g").attr("transform", `translate(0,${height2})`);
+const yAxisG2 = svg2.append("g");
+
+const lineTitle = svg2.append("text")
+    .attr("x", width / 2)
+    .attr("y", -15)
+    .attr("text-anchor", "middle")
+    .attr("font-size", "14px")
+    .attr("font-weight", "bold")
+    .attr("fill", "#333");
+
+svg2.append("text")
+    .attr("x", width / 2)
+    .attr("y", height2 + 45)
+    .attr("text-anchor", "middle")
+    .attr("font-size", "13px")
+    .attr("fill", "#555")
+    .text("Date");
+
+const yLabel2 = svg2.append("text")
+    .attr("transform", "rotate(-90)")
+    .attr("x", -height2 / 2)
+    .attr("y", -55)
+    .attr("text-anchor", "middle")
+    .attr("font-size", "13px")
+    .attr("fill", "#555");
+
 // Load Data & Draw
 d3.csv("weather_trimmed.csv").then(data => {
 
-    // Convert numeric columns
+    // Parse dates and convert numeric columns
+    const parseDate = d3.timeParse("%Y%m%d");
     data.forEach(d => {
+        d.date = parseDate(d.date);
         ["TMIN", "TMAX", "TAVG", "AWND", "WSF5", "SNOW", "SNWD", "PRCP"].forEach(col => {
             d[col] = d[col] === "" ? null : +d[col];
         });
@@ -75,7 +115,7 @@ d3.csv("weather_trimmed.csv").then(data => {
         update(this.value);
     });
 
-    // Update function
+    // Bar chart update function
     function update(metric) {
 
         // Aggregate: average metric per state (skip nulls)
@@ -105,7 +145,7 @@ d3.csv("weather_trimmed.csv").then(data => {
 
         yLabel.text(metrics[metric]);
 
-        // Remove all bars and redraw fresh each update
+        // Remove and redraw bars
         svg.selectAll(".bar").remove();
 
         svg.selectAll(".bar")
@@ -119,11 +159,12 @@ d3.csv("weather_trimmed.csv").then(data => {
             .attr("height", d => height - y(d.value))
             .attr("fill", "#4a90d9")
             .attr("rx", 3)
+            .style("cursor", "pointer")
             .on("mouseover", function (event, d) {
                 d3.select(this).attr("fill", "#2c5f8a");
                 tooltip
                     .style("opacity", 1)
-                    .html(`<strong>${d.state}</strong><br>${metrics[metric]}: ${d.value.toFixed(2)}`);
+                    .html(`<strong>${d.state}</strong><br>${metrics[metric]}: ${d.value.toFixed(2)}<br><em>Click to see over time</em>`);
             })
             .on("mousemove", function (event) {
                 tooltip
@@ -132,6 +173,86 @@ d3.csv("weather_trimmed.csv").then(data => {
             })
             .on("mouseout", function () {
                 d3.select(this).attr("fill", "#4a90d9");
+                tooltip.style("opacity", 0);
+            })
+            .on("click", function (event, d) {
+                // Highlight selected bar
+                svg.selectAll(".bar").attr("fill", "#4a90d9");
+                d3.select(this).attr("fill", "#e07b39");
+                // Draw line chart for clicked state
+                drawLineChart(d.state, metric);
+                // Show the line chart section
+                d3.select("#chart2-section").style("display", "block");
+            });
+    }
+
+    // Line chart draw function
+    function drawLineChart(state, metric) {
+
+        // Filter data for this state, remove nulls
+        const stateData = data
+            .filter(d => d.state === state && d[metric] !== null)
+            .sort((a, b) => a.date - b.date);
+
+        // Scales
+        const x = d3.scaleTime()
+            .domain(d3.extent(stateData, d => d.date))
+            .range([0, width]);
+
+        const y = d3.scaleLinear()
+            .domain([0, d3.max(stateData, d => d[metric]) * 1.1])
+            .range([height2, 0]);
+
+        // Axes
+        xAxisG2.transition().duration(500)
+            .call(d3.axisBottom(x).ticks(6).tickFormat(d3.timeFormat("%b")));
+
+        yAxisG2.transition().duration(500)
+            .call(d3.axisLeft(y).ticks(5));
+
+        yLabel2.text(metrics[metric]);
+        lineTitle.text(`${metrics[metric]} Over Time — ${state}`);
+
+        // Line generator
+        const line = d3.line()
+            .x(d => x(d.date))
+            .y(d => y(d[metric]))
+            .defined(d => d[metric] !== null);
+
+        // Remove old line and dots
+        svg2.selectAll(".line-path").remove();
+        svg2.selectAll(".dot").remove();
+
+        // Draw line
+        svg2.append("path")
+            .datum(stateData)
+            .attr("class", "line-path")
+            .attr("fill", "none")
+            .attr("stroke", "#e07b39")
+            .attr("stroke-width", 2)
+            .attr("d", line);
+
+        // Draw dots
+        svg2.selectAll(".dot")
+            .data(stateData)
+            .enter()
+            .append("circle")
+            .attr("class", "dot")
+            .attr("cx", d => x(d.date))
+            .attr("cy", d => y(d[metric]))
+            .attr("r", 3)
+            .attr("fill", "#e07b39")
+            .on("mouseover", function (event, d) {
+                tooltip
+                    .style("opacity", 1)
+                    .html(`<strong>${d.station}</strong><br>${d3.timeFormat("%b %d")(d.date)}: ${d[metric].toFixed(2)}`);
+            })
+            .on("mousemove", function (event) {
+                tooltip
+                    .style("left", (event.pageX + 12) + "px")
+                    .style("top",  (event.pageY - 28) + "px");
+            })
+            .on("mouseout", function () {
                 tooltip.style("opacity", 0);
             });
     }
