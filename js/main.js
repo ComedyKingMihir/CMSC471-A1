@@ -67,6 +67,9 @@ d3.csv("weather_trimmed.csv").then(data => {
         select.append("option").attr("value", key).text(label);
     });
 
+    // Track current metric for tooltip
+    let currentMetric = "TMAX";
+
     // Initial draw
     update("TMAX");
 
@@ -75,8 +78,9 @@ d3.csv("weather_trimmed.csv").then(data => {
         update(this.value);
     });
 
-        // Update function
+    // Update function
     function update(metric) {
+        currentMetric = metric;
 
         // Aggregate: average metric per state (skip nulls)
         const byState = d3.rollups(
@@ -121,7 +125,7 @@ d3.csv("weather_trimmed.csv").then(data => {
                 d3.select(this).attr("fill", "#2c5f8a");
                 tooltip
                     .style("opacity", 1)
-                    .html(`<strong>${d.state}</strong><br>${metrics[metric]}: ${d.value.toFixed(2)}`);
+                    .html(`<strong>${d.state}</strong><br>${metrics[currentMetric]}: ${d.value.toFixed(2)}`);
             })
             .on("mousemove", function (event) {
                 tooltip
