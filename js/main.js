@@ -67,9 +67,6 @@ d3.csv("weather_trimmed.csv").then(data => {
         select.append("option").attr("value", key).text(label);
     });
 
-    // Track current metric for tooltip
-    let currentMetric = "TMAX";
-
     // Initial draw
     update("TMAX");
 
@@ -80,7 +77,6 @@ d3.csv("weather_trimmed.csv").then(data => {
 
     // Update function
     function update(metric) {
-        currentMetric = metric;
 
         // Aggregate: average metric per state (skip nulls)
         const byState = d3.rollups(
@@ -109,23 +105,25 @@ d3.csv("weather_trimmed.csv").then(data => {
 
         yLabel.text(metrics[metric]);
 
-        // Bars
-        const bars = svg.selectAll(".bar")
-            .data(byState, d => d.state);
+        // Remove all bars and redraw fresh each update
+        svg.selectAll(".bar").remove();
 
-        bars.enter()
+        svg.selectAll(".bar")
+            .data(byState)
+            .enter()
             .append("rect")
             .attr("class", "bar")
-            .attr("y", height)
-            .attr("height", 0)
+            .attr("x", d => x(d.state))
+            .attr("width", x.bandwidth())
+            .attr("y", d => y(d.value))
+            .attr("height", d => height - y(d.value))
             .attr("fill", "#4a90d9")
             .attr("rx", 3)
-            .merge(bars)
             .on("mouseover", function (event, d) {
                 d3.select(this).attr("fill", "#2c5f8a");
                 tooltip
                     .style("opacity", 1)
-                    .html(`<strong>${d.state}</strong><br>${metrics[currentMetric]}: ${d.value.toFixed(2)}`);
+                    .html(`<strong>${d.state}</strong><br>${metrics[metric]}: ${d.value.toFixed(2)}`);
             })
             .on("mousemove", function (event) {
                 tooltip
@@ -135,13 +133,6 @@ d3.csv("weather_trimmed.csv").then(data => {
             .on("mouseout", function () {
                 d3.select(this).attr("fill", "#4a90d9");
                 tooltip.style("opacity", 0);
-            })
-            .transition().duration(500)
-            .attr("x", d => x(d.state))
-            .attr("width", x.bandwidth())
-            .attr("y", d => y(d.value))
-            .attr("height", d => height - y(d.value));
-
-        bars.exit().remove();
+            });
     }
 });
