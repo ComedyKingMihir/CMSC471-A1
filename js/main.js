@@ -244,7 +244,7 @@ d3.csv("weather_trimmed.csv").then(data => {
             .attr("class", "dot")
             .attr("cx", d => x(d.date))
             .attr("cy", d => y(d[metric]))
-            .attr("r", .5)
+            .attr("r", .01)
             .attr("fill", "#e07b39")
             .on("mouseover", function (event, d) {
                 tooltip
