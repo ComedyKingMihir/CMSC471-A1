@@ -126,7 +126,6 @@ d3.csv("weather_trimmed.csv").then(data => {
     // Redraw on dropdown change
     select.on("change", function () {
         update(this.value);
-        // If a state is selected, redraw line chart with new metric
         if (selectedState) {
             drawLineChart(selectedState, this.value);
         }
@@ -135,7 +134,6 @@ d3.csv("weather_trimmed.csv").then(data => {
     // Bar chart update function
     function update(metric) {
 
-        // Aggregate: average metric per state (skip nulls)
         const byState = d3.rollups(
             data.filter(d => d[metric] !== null),
             v => d3.mean(v, d => d[metric]),
@@ -143,7 +141,6 @@ d3.csv("weather_trimmed.csv").then(data => {
         ).map(([state, value]) => ({ state, value }))
          .sort((a, b) => d3.ascending(a.state, b.state));
 
-        // Scales
         const x = d3.scaleBand()
             .domain(byState.map(d => d.state))
             .range([0, width])
@@ -153,7 +150,6 @@ d3.csv("weather_trimmed.csv").then(data => {
             .domain([0, d3.max(byState, d => d.value) * 1.1])
             .range([height, 0]);
 
-        // Axes
         xAxisG.transition().duration(500)
             .call(d3.axisBottom(x));
 
@@ -162,7 +158,6 @@ d3.csv("weather_trimmed.csv").then(data => {
 
         yLabel.text(metrics[metric]);
 
-        // Remove and redraw bars
         svg.selectAll(".bar").remove();
 
         svg.selectAll(".bar")
@@ -201,30 +196,21 @@ d3.csv("weather_trimmed.csv").then(data => {
             });
     }
 
-    // Line chart draw function — averages by month
+    // Line chart draw function — raw data with tiny dots
     function drawLineChart(state, metric) {
 
-        // Filter data for this state, remove nulls
-        const stateData = data.filter(d => d.state === state && d[metric] !== null);
+        const stateData = data
+            .filter(d => d.state === state && d[metric] !== null)
+            .sort((a, b) => a.date - b.date);
 
-        // Average by month
-        const byMonth = d3.rollups(
-            stateData,
-            v => d3.mean(v, d => d[metric]),
-            d => d3.timeMonth(d.date)
-        ).map(([month, value]) => ({ month, value }))
-         .sort((a, b) => a.month - b.month);
-
-        // Scales
         const x = d3.scaleTime()
-            .domain(d3.extent(byMonth, d => d.month))
+            .domain(d3.extent(stateData, d => d.date))
             .range([0, width]);
 
         const y = d3.scaleLinear()
-            .domain([0, d3.max(byMonth, d => d.value) * 1.1])
+            .domain([0, d3.max(stateData, d => d[metric]) * 1.1])
             .range([height2, 0]);
 
-        // Axes
         xAxisG2.transition().duration(500)
             .call(d3.axisBottom(x).ticks(d3.timeMonth.every(1)).tickFormat(d3.timeFormat("%b")));
 
@@ -234,38 +220,36 @@ d3.csv("weather_trimmed.csv").then(data => {
         yLabel2.text(metrics[metric]);
         lineTitle.text(`${metrics[metric]} Over Time — ${state}`);
 
-        // Line generator
         const line = d3.line()
-            .x(d => x(d.month))
-            .y(d => y(d.value));
+            .x(d => x(d.date))
+            .y(d => y(d[metric]));
 
-        // Remove old line and dots
         svg2.selectAll(".line-path").remove();
         svg2.selectAll(".dot").remove();
 
         // Draw line
         svg2.append("path")
-            .datum(byMonth)
+            .datum(stateData)
             .attr("class", "line-path")
             .attr("fill", "none")
             .attr("stroke", "#e07b39")
-            .attr("stroke-width", 2)
+            .attr("stroke-width", 1.5)
             .attr("d", line);
 
-        // Draw dots
+        // Tiny visible dots
         svg2.selectAll(".dot")
-            .data(byMonth)
+            .data(stateData)
             .enter()
             .append("circle")
             .attr("class", "dot")
-            .attr("cx", d => x(d.month))
-            .attr("cy", d => y(d.value))
-            .attr("r", 5)
+            .attr("cx", d => x(d.date))
+            .attr("cy", d => y(d[metric]))
+            .attr("r", 1.5)
             .attr("fill", "#e07b39")
             .on("mouseover", function (event, d) {
                 tooltip
                     .style("opacity", 1)
-                    .html(`<strong>${state}</strong><br>${d3.timeFormat("%B")(d.month)}: ${d.value.toFixed(2)}`);
+                    .html(`<strong>${d.station}</strong><br>${d3.timeFormat("%b %d")(d.date)}: ${d[metric].toFixed(2)}`);
             })
             .on("mousemove", function (event) {
                 tooltip
