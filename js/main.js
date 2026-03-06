@@ -14,6 +14,9 @@ const metrics = {
     SNOW: "Avg Snowfall (in)"
 };
 
+// Track currently selected state
+let selectedState = null;
+
 // Bar chart SVG
 const svg = d3.select("#chart")
     .attr("width",  width  + margin.left + margin.right)
@@ -61,6 +64,16 @@ svg.append("text")
     .attr("fill", "#555")
     .text("State");
 
+// Click hint label
+svg.append("text")
+    .attr("x", width / 2)
+    .attr("y", -20)
+    .attr("text-anchor", "middle")
+    .attr("font-size", "12px")
+    .attr("fill", "#888")
+    .attr("font-style", "italic")
+    .text("Click a bar to explore weather over time");
+
 // Line chart axes & labels
 const xAxisG2 = svg2.append("g").attr("transform", `translate(0,${height2})`);
 const yAxisG2 = svg2.append("g");
@@ -79,7 +92,7 @@ svg2.append("text")
     .attr("text-anchor", "middle")
     .attr("font-size", "13px")
     .attr("fill", "#555")
-    .text("Date");
+    .text("Month");
 
 const yLabel2 = svg2.append("text")
     .attr("transform", "rotate(-90)")
@@ -113,6 +126,10 @@ d3.csv("weather_trimmed.csv").then(data => {
     // Redraw on dropdown change
     select.on("change", function () {
         update(this.value);
+        // If a state is selected, redraw line chart with new metric
+        if (selectedState) {
+            drawLineChart(selectedState, this.value);
+        }
     });
 
     // Bar chart update function
@@ -157,11 +174,11 @@ d3.csv("weather_trimmed.csv").then(data => {
             .attr("width", x.bandwidth())
             .attr("y", d => y(d.value))
             .attr("height", d => height - y(d.value))
-            .attr("fill", "#4a90d9")
+            .attr("fill", d => d.state === selectedState ? "#e07b39" : "#4a90d9")
             .attr("rx", 3)
             .style("cursor", "pointer")
             .on("mouseover", function (event, d) {
-                d3.select(this).attr("fill", "#2c5f8a");
+                if (d.state !== selectedState) d3.select(this).attr("fill", "#2c5f8a");
                 tooltip
                     .style("opacity", 1)
                     .html(`<strong>${d.state}</strong><br>${metrics[metric]}: ${d.value.toFixed(2)}<br><em>Click to see over time</em>`);
@@ -171,41 +188,45 @@ d3.csv("weather_trimmed.csv").then(data => {
                     .style("left", (event.pageX + 12) + "px")
                     .style("top",  (event.pageY - 28) + "px");
             })
-            .on("mouseout", function () {
-                d3.select(this).attr("fill", "#4a90d9");
+            .on("mouseout", function (event, d) {
+                d3.select(this).attr("fill", d.state === selectedState ? "#e07b39" : "#4a90d9");
                 tooltip.style("opacity", 0);
             })
             .on("click", function (event, d) {
-                // Highlight selected bar
+                selectedState = d.state;
                 svg.selectAll(".bar").attr("fill", "#4a90d9");
                 d3.select(this).attr("fill", "#e07b39");
-                // Draw line chart for clicked state
                 drawLineChart(d.state, metric);
-                // Show the line chart section
                 d3.select("#chart2-section").style("display", "block");
             });
     }
 
-    // Line chart draw function
+    // Line chart draw function — averages by month
     function drawLineChart(state, metric) {
 
         // Filter data for this state, remove nulls
-        const stateData = data
-            .filter(d => d.state === state && d[metric] !== null)
-            .sort((a, b) => a.date - b.date);
+        const stateData = data.filter(d => d.state === state && d[metric] !== null);
+
+        // Average by month
+        const byMonth = d3.rollups(
+            stateData,
+            v => d3.mean(v, d => d[metric]),
+            d => d3.timeMonth(d.date)
+        ).map(([month, value]) => ({ month, value }))
+         .sort((a, b) => a.month - b.month);
 
         // Scales
         const x = d3.scaleTime()
-            .domain(d3.extent(stateData, d => d.date))
+            .domain(d3.extent(byMonth, d => d.month))
             .range([0, width]);
 
         const y = d3.scaleLinear()
-            .domain([0, d3.max(stateData, d => d[metric]) * 1.1])
+            .domain([0, d3.max(byMonth, d => d.value) * 1.1])
             .range([height2, 0]);
 
         // Axes
         xAxisG2.transition().duration(500)
-            .call(d3.axisBottom(x).ticks(6).tickFormat(d3.timeFormat("%b")));
+            .call(d3.axisBottom(x).ticks(d3.timeMonth.every(1)).tickFormat(d3.timeFormat("%b")));
 
         yAxisG2.transition().duration(500)
             .call(d3.axisLeft(y).ticks(5));
@@ -215,9 +236,8 @@ d3.csv("weather_trimmed.csv").then(data => {
 
         // Line generator
         const line = d3.line()
-            .x(d => x(d.date))
-            .y(d => y(d[metric]))
-            .defined(d => d[metric] !== null);
+            .x(d => x(d.month))
+            .y(d => y(d.value));
 
         // Remove old line and dots
         svg2.selectAll(".line-path").remove();
@@ -225,7 +245,7 @@ d3.csv("weather_trimmed.csv").then(data => {
 
         // Draw line
         svg2.append("path")
-            .datum(stateData)
+            .datum(byMonth)
             .attr("class", "line-path")
             .attr("fill", "none")
             .attr("stroke", "#e07b39")
@@ -234,18 +254,18 @@ d3.csv("weather_trimmed.csv").then(data => {
 
         // Draw dots
         svg2.selectAll(".dot")
-            .data(stateData)
+            .data(byMonth)
             .enter()
             .append("circle")
             .attr("class", "dot")
-            .attr("cx", d => x(d.date))
-            .attr("cy", d => y(d[metric]))
-            .attr("r", 3)
+            .attr("cx", d => x(d.month))
+            .attr("cy", d => y(d.value))
+            .attr("r", 5)
             .attr("fill", "#e07b39")
             .on("mouseover", function (event, d) {
                 tooltip
                     .style("opacity", 1)
-                    .html(`<strong>${d.station}</strong><br>${d3.timeFormat("%b %d")(d.date)}: ${d[metric].toFixed(2)}`);
+                    .html(`<strong>${state}</strong><br>${d3.timeFormat("%B")(d.month)}: ${d.value.toFixed(2)}`);
             })
             .on("mousemove", function (event) {
                 tooltip
